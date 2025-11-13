@@ -1,0 +1,220 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      # Global CORS configuration
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            exposedHeaders:
+              - Content-Type
+              - X-Request-ID
+            allowCredentials: false
+            maxAge: 3600
+
+      # Route definitions
+      routes:
+        # SSE Stream endpoint - special handling for Server-Sent Events
+        - id: sse-stream
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/v2/events/stream
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: sseServiceCircuitBreaker
+                fallbackUri: forward:/fallback/sse
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+                redis-rate-limiter.requestedTokens: 1
+            - AddRequestHeader=X-Gateway-Request, true
+            - AddResponseHeader=X-Gateway-Response, true
+            - name: Retry
+              args:
+                retries: 3
+                statuses: BAD_GATEWAY,SERVICE_UNAVAILABLE
+                methods: GET
+                backoff:
+                  firstBackoff: 50ms
+                  maxBackoff: 500ms
+                  factor: 2
+                  basedOnPreviousValue: false
+
+        # Broadcast endpoint
+        - id: sse-broadcast
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/v2/events/broadcast
+            - Method=POST
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: sseServiceCircuitBreaker
+                fallbackUri: forward:/fallback/broadcast
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 5
+                redis-rate-limiter.burstCapacity: 10
+                redis-rate-limiter.requestedTokens: 1
+
+        # User-specific event endpoint
+        - id: sse-user-event
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/v2/events/send/{userId}
+            - Method=POST
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: sseServiceCircuitBreaker
+                fallbackUri: forward:/fallback/user-event
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 5
+                redis-rate-limiter.burstCapacity: 10
+                redis-rate-limiter.requestedTokens: 1
+
+        # Stats endpoint
+        - id: sse-stats
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/v2/events/stats/**
+            - Method=GET
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: sseServiceCircuitBreaker
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+                redis-rate-limiter.requestedTokens: 1
+
+        # Health endpoint
+        - id: sse-health
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/v2/events/health
+            - Method=GET
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: sseServiceCircuitBreaker
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+                redis-rate-limiter.requestedTokens: 1
+
+        # Static resources and UI
+        - id: sse-ui
+          uri: http://localhost:8081
+          predicates:
+            - Path=/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: sseServiceCircuitBreaker
+
+      # Default filters for all routes
+      default-filters:
+        - AddResponseHeader=X-Content-Type-Options, nosniff
+        - AddResponseHeader=X-Frame-Options, DENY
+        - AddResponseHeader=X-XSS-Protection, 1; mode=block
+        - AddResponseHeader=Strict-Transport-Security, max-age=31536000; includeSubDomains
+        - AddResponseHeader=Cache-Control, no-cache, no-store, must-revalidate
+        - AddResponseHeader=Pragma, no-cache
+        - RemoveRequestHeader=Cookie
+        - name: RequestTime
+
+  # Redis configuration for rate limiting
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+# Resilience4j Circuit Breaker configuration
+resilience4j:
+  circuitbreaker:
+    instances:
+      sseServiceCircuitBreaker:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+        eventConsumerBufferSize: 10
+        recordExceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+
+  timelimiter:
+    instances:
+      sseServiceCircuitBreaker:
+        timeoutDuration: 3s
+
+# Actuator configuration for monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+    gateway:
+      enabled: true
+  health:
+    circuitbreakers:
+      enabled: true
+    ratelimiters:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+
+# Logging configuration
+logging:
+  level:
+    root: INFO
+    org.springframework.cloud.gateway: INFO
+    org.springframework.web: INFO
+    com.example.gateway: DEBUG
+    reactor.netty: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/gateway.log
+    max-size: 10MB
+    max-history: 30

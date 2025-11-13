@@ -1,0 +1,27 @@
+// plugins {
+// 	id 'war'
+// }
+
+description = 'SSE Service - Server-Sent Events Backend'
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+	// JSON processing
+	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+
+	// Redis for distributed caching and pub/sub
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+	implementation 'io.lettuce:lettuce-core'
+
+	// Metrics
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+
+	// Development tools
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
+	// providedRuntime 'org.springframework.boot:spring-boot-tomcat-runtime'
+}

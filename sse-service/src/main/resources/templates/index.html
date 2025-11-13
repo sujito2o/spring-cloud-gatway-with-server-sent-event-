@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server-Sent Events Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
+        .card h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .card .value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .control-panel {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .control-panel h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #38a169;
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e53e3e;
+        }
+
+        .btn-warning {
+            background: #ed8936;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #dd6b20;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-connected {
+            background: #48bb78;
+            box-shadow: 0 0 8px #48bb78;
+        }
+
+        .status-disconnected {
+            background: #f56565;
+        }
+
+        .events-container {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .events-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .events-header h2 {
+            color: #667eea;
+        }
+
+        .event {
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border-left: 4px solid;
+            background: #f7fafc;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .event-notification {
+            border-left-color: #4299e1;
+        }
+
+        .event-alert {
+            border-left-color: #f56565;
+            background: #fff5f5;
+        }
+
+        .event-system_update {
+            border-left-color: #48bb78;
+            background: #f0fff4;
+        }
+
+        .event-connection {
+            border-left-color: #667eea;
+            background: #faf5ff;
+        }
+
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .event-title {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .event-type {
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background: #667eea;
+            color: white;
+            text-transform: uppercase;
+        }
+
+        .event-message {
+            color: #4a5568;
+            margin-bottom: 8px;
+        }
+
+        .event-footer {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: #718096;
+        }
+
+        .event-metadata {
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+        }
+
+        .severity-badge {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .severity-INFO {
+            background: #bee3f8;
+            color: #2c5282;
+        }
+
+        .severity-SUCCESS {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .severity-WARNING {
+            background: #feebc8;
+            color: #7c2d12;
+        }
+
+        .severity-ERROR {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .filter-group label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.9rem;
+        }
+
+        .live-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            background: #48bb78;
+            color: white;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .live-badge::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: white;
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        .current-user-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: #667eea;
+            color: white;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Server-Sent Events Dashboard</h1>
+            <p>Real-time event streaming with Spring Boot</p>
+        </div>
+
+        <div class="dashboard">
+            <div class="card">
+                <h3>Connection Status</h3>
+                <div class="value">
+                    <span id="statusIndicator" class="status-indicator status-disconnected"></span>
+                    <span id="statusText">Disconnected</span>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Events Received</h3>
+                <div class="value" id="eventCount">0</div>
+            </div>
+            <div class="card">
+                <h3>Active Connections</h3>
+                <div class="value" id="activeConnections">-</div>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <h2>Connection Settings</h2>
+            <div style="display: grid; gap: 10px; max-width: 600px; margin-bottom: 15px;">
+                <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center;">
+                    <label for="connectionUserId">User ID:</label>
+                    <input type="text" id="connectionUserId" placeholder="Optional - leave empty for anonymous"
+                           style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                </div>
+                <div style="font-size: 0.85rem; color: #718096; margin-left: 120px;">
+                    Connect with a User ID to receive user-specific events. Leave empty to connect anonymously.
+                </div>
+            </div>
+            <div class="button-group">
+                <button id="connectBtn" class="btn-primary">Connect to Stream</button>
+                <button id="disconnectBtn" class="btn-danger" disabled>Disconnect</button>
+                <button id="clearBtn" class="btn-warning">Clear Events</button>
+                <button id="statsBtn" class="btn-success">Refresh Stats</button>
+                <button id="healthBtn" class="btn-success">Check Health</button>
+            </div>
+            <div class="filter-group" style="margin-top: 15px;">
+                <label>
+                    <input type="checkbox" id="filterNotification" checked> Notifications
+                </label>
+                <label>
+                    <input type="checkbox" id="filterAlert" checked> Alerts
+                </label>
+                <label>
+                    <input type="checkbox" id="filterSystemUpdate" checked> System Updates
+                </label>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <h2>Manual Event Trigger (Broadcast to All)</h2>
+            <form id="eventForm" style="display: grid; gap: 10px; max-width: 600px;">
+                <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center;">
+                    <label for="eventType">Event Type:</label>
+                    <select id="eventType" style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                        <option value="NOTIFICATION">Notification</option>
+                        <option value="ALERT">Alert</option>
+                        <option value="SYSTEM_UPDATE">System Update</option>
+                        <option value="USER_ACTION">User Action</option>
+                        <option value="METRICS">Metrics</option>
+                    </select>
+                </div>
+                <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center;">
+                    <label for="eventTitle">Title:</label>
+                    <input type="text" id="eventTitle" placeholder="Event title"
+                           style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                </div>
+                <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center;">
+                    <label for="eventMessage">Message:</label>
+                    <input type="text" id="eventMessage" placeholder="Event message"
+                           style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                </div>
+                <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center;">
+                    <label for="eventSeverity">Severity:</label>
+                    <select id="eventSeverity" style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                        <option value="INFO">INFO</option>
+                        <option value="SUCCESS">SUCCESS</option>
+                        <option value="WARNING">WARNING</option>
+                        <option value="ERROR">ERROR</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-start;">
+                    <button type="submit" class="btn-primary">Broadcast Event</button>
+                    <button type="reset" class="btn-warning">Reset Form</button>
+                </div>
+            </form>
+            <div id="triggerStatus" style="margin-top: 10px; padding: 10px; border-radius: 4px; display: none;"></div>
+        </div>
+
+        <div class="control-panel">
+            <h2>User-Specific Event Trigger</h2>
+            <form id="userEventForm" style="display: grid; gap: 10px; max-width: 600px;">
+                <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center;">
+                    <label for="targetUserId">Target User ID:</label>
+                    <input type="text" id="targetUserId" placeholder="Enter user ID"
+                           style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                </div>
+                <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center;">
+                    <label for="userEventType">Event Type:</label>
+                    <select id="userEventType" style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                        <option value="NOTIFICATION">Notification</option>
+                        <option value="ALERT">Alert</option>
+                        <option value="SYSTEM_UPDATE">System Update</option>
+                        <option value="USER_ACTION">User Action</option>
+                        <option value="METRICS">Metrics</option>
+                    </select>
+                </div>
+                <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center;">
+                    <label for="userEventTitle">Title:</label>
+                    <input type="text" id="userEventTitle" placeholder="Event title"
+                           style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                </div>
+                <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center;">
+                    <label for="userEventMessage">Message:</label>
+                    <input type="text" id="userEventMessage" placeholder="Event message"
+                           style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                </div>
+                <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center;">
+                    <label for="userEventSeverity">Severity:</label>
+                    <select id="userEventSeverity" style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                        <option value="INFO">INFO</option>
+                        <option value="SUCCESS">SUCCESS</option>
+                        <option value="WARNING">WARNING</option>
+                        <option value="ERROR">ERROR</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-start;">
+                    <button type="submit" class="btn-primary">Send to User</button>
+                    <button type="reset" class="btn-warning">Reset Form</button>
+                </div>
+            </form>
+            <div id="userEventStatus" style="margin-top: 10px; padding: 10px; border-radius: 4px; display: none;"></div>
+        </div>
+
+        <div class="control-panel">
+            <h2>User-Specific Stats</h2>
+            <form id="userStatsForm" style="display: grid; gap: 10px; max-width: 600px;">
+                <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center;">
+                    <label for="statsUserId">User ID:</label>
+                    <input type="text" id="statsUserId" placeholder="Enter user ID"
+                           style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-start;">
+                    <button type="submit" class="btn-success">Get User Stats</button>
+                </div>
+            </form>
+            <div id="userStatsResult" style="margin-top: 15px; padding: 15px; background: #f7fafc; border-radius: 8px; display: none;">
+                <h3 style="margin-bottom: 10px; color: #667eea;">Connection Stats</h3>
+                <div style="display: grid; grid-template-columns: 200px 1fr; gap: 10px;">
+                    <span style="font-weight: 600;">User ID:</span>
+                    <span id="statsResultUserId">-</span>
+                    <span style="font-weight: 600;">Active Connections:</span>
+                    <span id="statsResultConnections">-</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="events-container">
+            <div class="events-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <h2>Live Events</h2>
+                    <span id="liveIndicator" style="display: none;" class="live-badge">LIVE</span>
+                    <span id="currentUserBadge" style="display: none;" class="current-user-badge"></span>
+                </div>
+                <span>Total: <strong id="totalEvents">0</strong></span>
+            </div>
+            <div id="eventsDisplay"></div>
+        </div>
+    </div>
+
+    <script th:inline="none">
+        // State management
+        let eventSource = null;
+        let eventCount = 0;
+        let events = [];
+
+        // DOM elements
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const statsBtn = document.getElementById('statsBtn');
+        const eventsDisplay = document.getElementById('eventsDisplay');
+        const statusText = document.getElementById('statusText');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const eventCountDisplay = document.getElementById('eventCount');
+        const totalEventsDisplay = document.getElementById('totalEvents');
+        const activeConnectionsDisplay = document.getElementById('activeConnections');
+
+        // Filter checkboxes
+        const filterNotification = document.getElementById('filterNotification');
+        const filterAlert = document.getElementById('filterAlert');
+        const filterSystemUpdate = document.getElementById('filterSystemUpdate');
+
+        // Connect to SSE stream
+        function connect() {
+            if (eventSource) {
+                console.log('Already connected');
+                return;
+            }
+
+            const userId = document.getElementById('connectionUserId').value.trim();
+            const clientInfo = `WebClient-${Date.now()}`;
+
+            // Build URL with optional userId parameter
+            let url = `/api/v2/events/stream?clientInfo=${encodeURIComponent(clientInfo)}`;
+            if (userId) {
+                url += `&userId=${encodeURIComponent(userId)}`;
+            }
+
+            eventSource = new EventSource(url);
+
+            eventSource.onopen = () => {
+                console.log('SSE connection opened');
+                updateConnectionStatus(true, userId);
+            };
+
+            eventSource.addEventListener('connection', (e) => {
+                console.log('Received connection event:', e.data);
+                const event = JSON.parse(e.data);
+                addEvent(event);
+            });
+
+            eventSource.addEventListener('notification', (e) => {
+                console.log('Received notification event:', e.data);
+                const event = JSON.parse(e.data);
+                addEvent(event);
+            });
+
+            eventSource.addEventListener('alert', (e) => {
+                console.log('Received alert event:', e.data);
+                const event = JSON.parse(e.data);
+                addEvent(event);
+            });
+
+            eventSource.addEventListener('system_update', (e) => {
+                console.log('Received system_update event:', e.data);
+                const event = JSON.parse(e.data);
+                addEvent(event);
+            });
+
+            eventSource.addEventListener('user_action', (e) => {
+                console.log('Received user_action event:', e.data);
+                const event = JSON.parse(e.data);
+                addEvent(event);
+            });
+
+            eventSource.addEventListener('metrics', (e) => {
+                console.log('Received metrics event:', e.data);
+                const event = JSON.parse(e.data);
+                addEvent(event);
+            });
+
+            eventSource.onerror = (error) => {
+                console.error('SSE error:', error);
+                disconnect();
+            };
+        }
+
+        // Disconnect from SSE stream
+        function disconnect() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+                updateConnectionStatus(false);
+                console.log('SSE connection closed');
+            }
+        }
+
+        // Update connection status UI
+        function updateConnectionStatus(connected, userId = '') {
+            const liveIndicator = document.getElementById('liveIndicator');
+            const currentUserBadge = document.getElementById('currentUserBadge');
+
+            if (connected) {
+                statusText.textContent = 'Connected';
+                statusIndicator.classList.remove('status-disconnected');
+                statusIndicator.classList.add('status-connected');
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+
+                // Show live indicator
+                liveIndicator.style.display = 'inline-flex';
+
+                // Show user badge if userId is provided
+                if (userId) {
+                    currentUserBadge.textContent = `User: ${userId}`;
+                    currentUserBadge.style.display = 'inline-block';
+                } else {
+                    currentUserBadge.textContent = 'Anonymous';
+                    currentUserBadge.style.display = 'inline-block';
+                }
+            } else {
+                statusText.textContent = 'Disconnected';
+                statusIndicator.classList.remove('status-connected');
+                statusIndicator.classList.add('status-disconnected');
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+
+                // Hide live indicator
+                liveIndicator.style.display = 'none';
+                currentUserBadge.style.display = 'none';
+            }
+        }
+
+        // Add event to display
+        function addEvent(event) {
+            eventCount++;
+            events.unshift(event);
+            eventCountDisplay.textContent = eventCount;
+            totalEventsDisplay.textContent = events.length;
+
+            if (events.length > 100) {
+                events.pop();
+            }
+
+            renderEvents();
+        }
+
+        // Render events with filters
+        function renderEvents() {
+            const filters = {
+                notification: filterNotification.checked,
+                alert: filterAlert.checked,
+                system_update: filterSystemUpdate.checked
+            };
+
+            const filteredEvents = events.filter(event => {
+                const type = event.type.toLowerCase();
+                return filters[type] !== false;
+            });
+
+            console.log('Rendering events:', filteredEvents.length, 'of', events.length);
+
+            if (filteredEvents.length === 0) {
+                eventsDisplay.innerHTML = '<div style="text-align: center; padding: 40px; color: #718096; font-size: 1.1rem;"><p>🔔 No events to display</p><p style="font-size: 0.9rem; margin-top: 10px;">Waiting for live events...</p></div>';
+                return;
+            }
+
+            eventsDisplay.innerHTML = filteredEvents.map(event => {
+                const metadataHtml = event.metadata
+                    ? `<div class="event-metadata">${JSON.stringify(event.metadata, null, 2)}</div>`
+                    : '';
+
+                return `
+                    <div class="event event-${event.type.toLowerCase()}">
+                        <div class="event-header">
+                            <span class="event-title">${event.title}</span>
+                            <span class="event-type">${event.type}</span>
+                        </div>
+                        <div class="event-message">${event.message}</div>
+                        ${metadataHtml}
+                        <div class="event-footer">
+                            <span>${event.timestamp}</span>
+                            <span class="severity-badge severity-${event.severity}">${event.severity}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Clear events
+        function clearEvents() {
+            events = [];
+            eventsDisplay.innerHTML = '<p style="text-align: center; color: #718096;">No events to display</p>';
+            totalEventsDisplay.textContent = '0';
+        }
+
+        // Fetch stats from server
+        async function fetchStats() {
+            try {
+                const response = await fetch('/api/v2/events/stats');
+                const data = await response.json();
+                activeConnectionsDisplay.textContent = data.activeConnections;
+            } catch (error) {
+                console.error('Failed to fetch stats:', error);
+            }
+        }
+
+        // Check health
+        async function checkHealth() {
+            try {
+                const response = await fetch('/api/v2/events/health');
+                const healthData = await response.json();
+
+                const message = `Health: ${healthData.status} | Active Connections: ${healthData.activeConnections}`;
+                showStatus('triggerStatus', message, healthData.status === 'UP' ? 'success' : 'error');
+
+                console.log('Health check:', healthData);
+            } catch (error) {
+                console.error('Failed to check health:', error);
+                showStatus('triggerStatus', 'Failed to check health: ' + error.message, 'error');
+            }
+        }
+
+        // Broadcast custom event (using v2 API)
+        async function triggerEvent(eventData) {
+            try {
+                const response = await fetch('/api/v2/events/broadcast', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(eventData)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showStatus('triggerStatus', `Event broadcasted successfully! Type: ${result.eventType}`, 'success');
+                    console.log('Event broadcasted:', result);
+                } else {
+                    showStatus('triggerStatus', 'Failed to broadcast event: ' + result.message, 'error');
+                }
+            } catch (error) {
+                console.error('Failed to broadcast event:', error);
+                showStatus('triggerStatus', 'Failed to broadcast event: ' + error.message, 'error');
+            }
+        }
+
+        // Show status message
+        function showStatus(elementId, message, type) {
+            const statusEl = document.getElementById(elementId);
+            statusEl.textContent = message;
+            statusEl.style.display = 'block';
+
+            // Set background color based on type
+            if (type === 'success') {
+                statusEl.style.background = '#c6f6d5';
+                statusEl.style.color = '#22543d';
+            } else if (type === 'error') {
+                statusEl.style.background = '#fed7d7';
+                statusEl.style.color = '#742a2a';
+            } else if (type === 'info') {
+                statusEl.style.background = '#bee3f8';
+                statusEl.style.color = '#2c5282';
+            }
+
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 5000);
+        }
+
+        // Event listeners
+        connectBtn.addEventListener('click', connect);
+        disconnectBtn.addEventListener('click', disconnect);
+        clearBtn.addEventListener('click', clearEvents);
+        statsBtn.addEventListener('click', fetchStats);
+        document.getElementById('healthBtn').addEventListener('click', checkHealth);
+
+        // Form submission
+        document.getElementById('eventForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            const eventData = {
+                type: document.getElementById('eventType').value,
+                title: document.getElementById('eventTitle').value,
+                message: document.getElementById('eventMessage').value,
+                severity: document.getElementById('eventSeverity').value
+            };
+
+            if (!eventData.title || !eventData.message) {
+                showStatus('triggerStatus', 'Please fill in all fields', 'error');
+                return;
+            }
+
+            triggerEvent(eventData);
+        });
+
+        filterNotification.addEventListener('change', renderEvents);
+        filterAlert.addEventListener('change', renderEvents);
+        filterSystemUpdate.addEventListener('change', renderEvents);
+
+        // User-specific event trigger
+        document.getElementById('userEventForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const userId = document.getElementById('targetUserId').value;
+            const eventData = {
+                type: document.getElementById('userEventType').value,
+                title: document.getElementById('userEventTitle').value,
+                message: document.getElementById('userEventMessage').value,
+                severity: document.getElementById('userEventSeverity').value
+            };
+
+            if (!userId || !eventData.title || !eventData.message) {
+                showStatus('userEventStatus', 'Please fill in all fields including User ID', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/v2/events/send/${encodeURIComponent(userId)}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(eventData)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showStatus('userEventStatus', `Event sent to user ${userId}! Type: ${result.eventType}`, 'success');
+                    console.log('User event sent:', result);
+                } else {
+                    showStatus('userEventStatus', 'Failed to send event: ' + result.message, 'error');
+                }
+            } catch (error) {
+                console.error('Failed to send user event:', error);
+                showStatus('userEventStatus', 'Failed to send event: ' + error.message, 'error');
+            }
+        });
+
+        // User-specific stats
+        document.getElementById('userStatsForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const userId = document.getElementById('statsUserId').value;
+
+            if (!userId) {
+                alert('Please enter a User ID');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/v2/events/stats/user/${encodeURIComponent(userId)}`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('statsResultUserId').textContent = userId;
+                    document.getElementById('statsResultConnections').textContent = data.userConnectionCount;
+                    document.getElementById('userStatsResult').style.display = 'block';
+                } else {
+                    alert('Failed to fetch user stats: ' + (data.message || 'Unknown error'));
+                    document.getElementById('userStatsResult').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Failed to fetch user stats:', error);
+                alert('Failed to fetch user stats: ' + error.message);
+                document.getElementById('userStatsResult').style.display = 'none';
+            }
+        });
+
+        // Auto-connect on page load
+        window.addEventListener('load', () => {
+            // Initialize display with placeholder
+            renderEvents();
+
+            connect();
+            fetchStats();
+            setInterval(fetchStats, 5000); // Update stats every 5 seconds
+        });
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            disconnect();
+        });
+    </script>
+</body>
+</html>
